@@ -1,6 +1,6 @@
 module connect4
 
-go 1.25.5
+go 1.25
 
 require (
 	github.com/golang/snappy v0.0.4 // indirect
