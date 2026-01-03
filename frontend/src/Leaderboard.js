@@ -8,6 +8,7 @@ function Leaderboard({ refreshTrigger = 0 }) {
   const fetchLeaderboard = () => {
     setLoading(true);
     setError(null);
+
     fetch("https://connect4-backend-a4kq.onrender.com/leaderboard")
       .then(res => {
         if (!res.ok) {
@@ -15,7 +16,13 @@ function Leaderboard({ refreshTrigger = 0 }) {
         }
         return res.json();
       })
-      .then(setData)
+      .then(result => {
+        if (Array.isArray(result)) {
+          setData(result);
+        } else {
+          setData([]);
+        }
+      })
       .catch(err => {
         console.error("Leaderboard fetch error:", err);
         setError("Unable to load leaderboard. Make sure the backend server is running.");
@@ -26,15 +33,11 @@ function Leaderboard({ refreshTrigger = 0 }) {
 
   useEffect(() => {
     fetchLeaderboard();
-  }, []); // Initial load
+  }, []);
 
-  // Refresh when refreshTrigger changes (game ends)
   useEffect(() => {
     if (refreshTrigger > 0) {
-      // Small delay to ensure backend has saved the game result
-      const timer = setTimeout(() => {
-        fetchLeaderboard();
-      }, 500);
+      const timer = setTimeout(fetchLeaderboard, 500);
       return () => clearTimeout(timer);
     }
   }, [refreshTrigger]);
@@ -42,11 +45,21 @@ function Leaderboard({ refreshTrigger = 0 }) {
   return (
     <div>
       <h2>Leaderboard</h2>
+
       {loading && <p>Loading...</p>}
-      {error && <p style={{ color: "#999", fontStyle: "italic" }}>{error}</p>}
-      {!loading && !error && data.length === 0 && (
-        <p style={{ color: "#999", fontStyle: "italic" }}>No games played yet.</p>
+
+      {error && (
+        <p style={{ color: "#999", fontStyle: "italic" }}>
+          {error}
+        </p>
       )}
+
+      {!loading && !error && data.length === 0 && (
+        <p style={{ color: "#999", fontStyle: "italic" }}>
+          No games played yet.
+        </p>
+      )}
+
       {!loading && !error && data.length > 0 && (
         <ul>
           {data.map((item, index) => (
