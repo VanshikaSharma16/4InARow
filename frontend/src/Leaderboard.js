@@ -8,7 +8,7 @@ function Leaderboard({ refreshTrigger = 0 }) {
   const fetchLeaderboard = () => {
     setLoading(true);
     setError(null);
-    fetch("http://localhost:8080/leaderboard")
+    fetch("https://connect4-backend-a4kq.onrender.com/leaderboard")
       .then(res => {
         if (!res.ok) {
           throw new Error("Failed to fetch leaderboard");

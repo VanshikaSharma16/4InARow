@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import Leaderboard from "./Leaderboard";
 
-const WS_URL = "ws://localhost:8080/ws";
+const WS_URL = "wss://connect4-backend-a4kq.onrender.com/ws";
 
 const emptyBoard = () =>
   Array.from({ length: 6 }, () => Array(7).fill(0));
