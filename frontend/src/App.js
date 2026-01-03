@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Leaderboard from "./Leaderboard";
 
 const WS_URL = "ws://localhost:8080/ws";
@@ -18,8 +18,25 @@ function App() {
   const [status, setStatus] = useState(""); // waiting, playing, game_over
   const [isConnected, setIsConnected] = useState(false);
   const [showUsernameInput, setShowUsernameInput] = useState(true);
+  const [player1, setPlayer1] = useState("");
+  const [player2, setPlayer2] = useState("");
+  const gameOverRef = useRef(false); // Use ref to track game over state for onclose handler
+  const [leaderboardRefresh, setLeaderboardRefresh] = useState(0); // Trigger leaderboard refresh
 
   const connectWebSocket = (user, gameIdParam = "") => {
+    // Reset game state when starting new connection (unless reconnecting to existing game)
+    if (!gameIdParam) {
+      // New game - reset everything
+      setBoard(emptyBoard());
+      setTurn(null);
+      setGameOver(false);
+      setWinner(null);
+      setOpponent("");
+      setGameId("");
+      setPlayer1("");
+      setPlayer2("");
+    }
+    gameOverRef.current = false;
     if (socket) {
       socket.close();
     }
@@ -43,6 +60,11 @@ function App() {
       if (data.type === "waiting") {
         setStatus("waiting");
         setShowUsernameInput(false);
+        // Reset board when waiting for opponent (new game)
+        setBoard(emptyBoard());
+        setTurn(null);
+        setGameOver(false);
+        setWinner(null);
       }
 
       if (data.type === "game_started") {
@@ -54,6 +76,7 @@ function App() {
       if (data.type === "reconnected") {
         setStatus("playing");
         setGameId(data.gameId);
+        if (data.opponent) setOpponent(data.opponent);
         setShowUsernameInput(false);
       }
 
@@ -61,25 +84,38 @@ function App() {
         setBoard(data.board);
         setTurn(data.turn);
         setGameId(data.gameId || gameId);
+        if (data.player1) setPlayer1(data.player1);
+        if (data.player2) setPlayer2(data.player2);
+        // Update opponent if not set yet
+        if (data.player1 && data.player2 && !opponent) {
+          const opp = username === data.player1 ? data.player2 : data.player1;
+          setOpponent(opp);
+        }
         if (data.gameOver) {
           setGameOver(true);
+          gameOverRef.current = true; // Update ref
           setStatus("game_over");
           if (data.winner === 0) {
             setWinner("draw");
           } else {
             setWinner(data.winner);
           }
+          // Trigger leaderboard refresh when game ends
+          setLeaderboardRefresh(prev => prev + 1);
         }
       }
 
       if (data.type === "game_over") {
         setGameOver(true);
+        gameOverRef.current = true; // Update ref
         setStatus("game_over");
         if (data.winner === 0 || data.result === "draw") {
           setWinner("draw");
         } else {
           setWinner(data.winner);
         }
+        // Trigger leaderboard refresh when game ends
+        setLeaderboardRefresh(prev => prev + 1);
       }
 
       if (data.type === "error") {
@@ -95,8 +131,16 @@ function App() {
     ws.onclose = () => {
       console.log("Disconnected from server");
       setIsConnected(false);
-      if (!gameOver) {
-        setStatus("disconnected");
+      // Only set disconnected status if game is not over
+      // Use ref to check current state (avoids stale closure issue)
+      if (!gameOverRef.current) {
+        setStatus(prevStatus => {
+          // Don't override game_over status
+          if (prevStatus !== "game_over") {
+            return "disconnected";
+          }
+          return prevStatus;
+        });
       }
     };
 
@@ -123,8 +167,17 @@ function App() {
     if (!socket || gameOver || status !== "playing") return;
     if (turn === null) return;
 
-    // Check if it's player's turn
-    const playerNum = username === opponent ? 2 : 1;
+    // Check if it's player's turn - determine player number from player1/player2
+    let playerNum = 0;
+    if (username === player1) {
+      playerNum = 1;
+    } else if (username === player2) {
+      playerNum = 2;
+    } else {
+      // Fallback: if player1/player2 not set yet, use old logic
+      playerNum = username === opponent ? 2 : 1;
+    }
+    
     if (turn !== playerNum) {
       alert("Not your turn!");
       return;
@@ -142,11 +195,14 @@ function App() {
     setBoard(emptyBoard());
     setTurn(null);
     setGameOver(false);
+    gameOverRef.current = false; // Reset ref
     setWinner(null);
     setOpponent("");
     setGameId("");
     setStatus("");
     setShowUsernameInput(true);
+    setPlayer1("");
+    setPlayer2("");
     if (socket) {
       socket.close();
     }
@@ -161,14 +217,29 @@ function App() {
       return "Connecting...";
     }
     if (status === "playing") {
-      const playerNum = username === opponent ? 2 : 1;
+      // Determine player number from player1/player2
+      let playerNum = 0;
+      if (username === player1) {
+        playerNum = 1;
+      } else if (username === player2) {
+        playerNum = 2;
+      } else {
+        // Fallback
+        playerNum = username === opponent ? 2 : 1;
+      }
+      
       if (gameOver) {
         if (winner === "draw") {
           return "Game Over - It's a Draw!";
         }
-        return `Game Over - Player ${winner} wins!`;
+        const winnerName = winner === 1 ? player1 : player2;
+        const isYou = (winner === playerNum);
+        return `Game Over - ${winnerName}${isYou ? " (You)" : ""} wins!`;
       }
-      return `Turn: Player ${turn}${turn === playerNum ? " (You)" : ` (${turn === 1 ? opponent || "Player 1" : opponent || "Player 2"})`}`;
+      
+      const currentPlayerName = turn === 1 ? player1 : player2;
+      const isYourTurn = (turn === playerNum);
+      return `Turn: ${currentPlayerName}${isYourTurn ? " (You)" : ""}`;
     }
     if (status === "game_over") {
       if (winner === "draw") {
@@ -233,26 +304,50 @@ function App() {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 60px)", gap: 5, marginBottom: 20 }}>
-        {board.map((row, r) =>
-          row.map((cell, c) => (
+      <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 20, alignItems: "center" }}>
+        {/* Column headers - clickable to drop discs */}
+        <div style={{ display: "flex", gap: 5, marginBottom: 5 }}>
+          {Array.from({ length: 7 }).map((_, c) => (
             <div
-              key={`${r}-${c}`}
+              key={`header-${c}`}
               onClick={() => handleMove(c)}
               style={{
                 width: 50,
-                height: 50,
-                borderRadius: "50%",
-                background:
-                  cell === 1 ? "red" : cell === 2 ? "yellow" : "#eee",
+                height: 30,
+                background: "#ddd",
                 border: "2px solid #333",
-                margin: 5,
+                borderRadius: 5,
                 cursor: gameOver || status !== "playing" ? "not-allowed" : "pointer",
-                opacity: cell === 0 ? 0.3 : 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 12,
+                fontWeight: "bold",
               }}
-            />
-          )))
-        }
+            >
+              ↓
+            </div>
+          ))}
+        </div>
+        {/* Game board */}
+        {board.map((row, r) => (
+          <div key={r} style={{ display: "flex", gap: 5 }}>
+            {row.map((cell, c) => (
+              <div
+                key={`${r}-${c}`}
+                style={{
+                  width: 50,
+                  height: 50,
+                  borderRadius: "50%",
+                  background:
+                    cell === 1 ? "red" : cell === 2 ? "yellow" : "#eee",
+                  border: "2px solid #333",
+                  opacity: cell === 0 ? 0.3 : 1,
+                }}
+              />
+            ))}
+          </div>
+        ))}
       </div>
 
       {gameOver && (
@@ -262,7 +357,7 @@ function App() {
       )}
 
       <hr />
-      <Leaderboard />
+      <Leaderboard refreshTrigger={leaderboardRefresh} />
     </div>
   );
 }

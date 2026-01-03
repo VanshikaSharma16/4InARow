@@ -90,7 +90,7 @@ func BotMove(g *Game) int {
 		}
 	}
 	if len(valid) > 0 {
-		return valid[rand.Intn(len(valid))]
+	return valid[rand.Intn(len(valid))]
 	}
 
 	return 3 // Default to center

@@ -51,10 +51,17 @@ func HandleWS(w http.ResponseWriter, r *http.Request) {
 			}
 			g.Connections[username] = true
 			delete(g.LastSeen, username)
+			manager.AddConnection(g.ID, username, conn)
 			log.Printf("Player %s reconnected to game %s", username, gameID)
+			// Determine opponent for reconnection message
+			opponentName := g.Player2
+			if username == g.Player2 {
+				opponentName = g.Player1
+			}
 			sendMessage(conn, "reconnected", map[string]interface{}{
-				"message": "Reconnected to game",
-				"gameId":  g.ID,
+				"message":  "Reconnected to game",
+				"gameId":   g.ID,
+				"opponent": opponentName,
 			})
 			sendState(conn, g)
 			// Continue to game loop below
@@ -64,6 +71,12 @@ func HandleWS(w http.ResponseWriter, r *http.Request) {
 	// ✅ MATCHMAKING: If no game found, try to find or create one
 	if g == nil {
 		g = game.FindGameByUsername(username)
+		// Only reuse game if it's not finished (for reconnection to active game)
+		if g != nil && g.GameOver {
+			// Game is finished, remove it and create a new one
+			game.RemoveGame(g.ID)
+			g = nil
+		}
 		if g == nil {
 			g = game.FindMatch(username)
 		}
@@ -101,19 +114,24 @@ func HandleWS(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
-		// Match found immediately
+		// Match found immediately - determine opponent
+		opponentName := g.Player2
+		if username == g.Player2 {
+			opponentName = g.Player1
+		}
 		sendMessage(conn, "game_started", map[string]interface{}{
 			"message":  "Match found! Game starting...",
-			"opponent": g.Player2,
+			"opponent": opponentName,
 		})
 		sendState(conn, g)
 	}
 
-	// Mark connection as active
+	// Mark connection as active and add to connection manager
 	if g.Connections == nil {
 		g.Connections = make(map[string]bool)
 	}
 	g.Connections[username] = true
+	manager.AddConnection(g.ID, username, conn)
 
 	// Start disconnect monitoring goroutine
 	go monitorDisconnection(g, username)
@@ -123,6 +141,7 @@ func HandleWS(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Printf("Read error for %s: %v", username, err)
 			handleDisconnect(g, username)
+			manager.RemoveConnection(g.ID, username)
 			return
 		}
 
@@ -150,16 +169,19 @@ func HandleWS(w http.ResponseWriter, r *http.Request) {
 
 			// Make the move using function version
 			result := game.MakeMove(g, col, playerNum)
-			if result != "OK" && result != "WIN" {
+			if result != "OK" && result != "WIN" && result != "DRAW" {
 				sendError(conn, result)
 				continue
 			}
 
-			sendState(conn, g)
+			// Broadcast state to all players in the game
+			broadcastState(g)
 
 			// ✅ PLAYER WIN or DRAW
 			if result == "WIN" || result == "DRAW" {
-				saveAndEndGame(conn, g)
+				saveAndEndGame(g)
+				// Give a moment for the game_over message to be sent before closing
+				time.Sleep(100 * time.Millisecond)
 				return
 			}
 
@@ -170,11 +192,14 @@ func HandleWS(w http.ResponseWriter, r *http.Request) {
 				botCol := game.BotMove(g)
 				botResult := game.MakeMove(g, botCol, 2)
 
-				sendState(conn, g)
+				// Broadcast state to player
+				broadcastState(g)
 
 				// Check if bot won or draw
 				if botResult == "WIN" || botResult == "DRAW" {
-					saveAndEndGame(conn, g)
+					saveAndEndGame(g)
+					// Give a moment for the game_over message to be sent before closing
+					time.Sleep(100 * time.Millisecond)
 					return
 				}
 			}
@@ -184,12 +209,48 @@ func HandleWS(w http.ResponseWriter, r *http.Request) {
 
 // ---------------- helpers ----------------
 
-func saveAndEndGame(conn *websocket.Conn, g *game.Game) {
+func saveAndEndGame(g *game.Game) {
 	err := db.SaveGameResult(g.Player1, g.Player2, g.Winner)
 	if err != nil {
 		log.Println("MongoDB save failed:", err)
 	}
-	sendGameOver(conn, g)
+	broadcastGameOver(g)
+	// Clean up finished game after a delay (allow time for messages to be sent)
+	go func() {
+		time.Sleep(2 * time.Second)
+		game.RemoveGame(g.ID)
+	}()
+}
+
+func broadcastState(g *game.Game) {
+	data, _ := json.Marshal(map[string]interface{}{
+		"type":     "state",
+		"board":    g.Board,
+		"turn":     g.Turn,
+		"gameId":   g.ID,
+		"gameOver": g.GameOver,
+		"winner":   g.Winner,
+		"player1":  g.Player1,
+		"player2":  g.Player2,
+	})
+	manager.BroadcastToGame(g.ID, data)
+}
+
+func broadcastGameOver(g *game.Game) {
+	result := "draw"
+	if g.Winner == 1 {
+		result = g.Player1
+	} else if g.Winner == 2 {
+		result = g.Player2
+	}
+
+	data, _ := json.Marshal(map[string]interface{}{
+		"type":   "game_over",
+		"winner": g.Winner,
+		"result": result,
+		"board":  g.Board,
+	})
+	manager.BroadcastToGame(g.ID, data)
 }
 
 func sendState(conn *websocket.Conn, g *game.Game) {
@@ -200,6 +261,8 @@ func sendState(conn *websocket.Conn, g *game.Game) {
 		"gameId":   g.ID,
 		"gameOver": g.GameOver,
 		"winner":   g.Winner,
+		"player1":  g.Player1,
+		"player2":  g.Player2,
 	})
 	conn.WriteMessage(websocket.TextMessage, data)
 }
@@ -275,8 +338,8 @@ func handleDisconnect(g *game.Game, username string) {
 	log.Printf("Player %s disconnected (30s grace period)", username)
 }
 
-// notifyForfeit notifies the opponent about forfeit (would need connection tracking)
+// notifyForfeit notifies the opponent about forfeit
 func notifyForfeit(g *game.Game, username string) {
-	// This would need a connection manager to notify the other player
-	// For now, the next state update will show game over
+	// Broadcast game over state to all connected players
+	broadcastGameOver(g)
 }

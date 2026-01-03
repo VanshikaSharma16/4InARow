@@ -58,7 +58,7 @@ func StartBotIfNoPlayer(username string) {
 		// Check if player is still waiting
 		if WaitingPlayer == username {
 			log.Printf("Bot joining game for player: %s", username)
-			
+
 			var board [6][7]int
 			game := &Game{
 				ID:          GenerateGameID(),
@@ -95,4 +95,14 @@ func ForfeitGame(g *Game, username string) {
 	}
 
 	log.Printf("Game forfeited by %s, winner: %d", username, g.Winner)
+}
+
+// RemoveGame removes a game from ActiveGames (cleanup after game ends)
+func RemoveGame(gameID string) {
+	for username, g := range ActiveGames {
+		if g != nil && g.ID == gameID {
+			delete(ActiveGames, username)
+		}
+	}
+	log.Printf("Removed finished game %s from ActiveGames", gameID)
 }

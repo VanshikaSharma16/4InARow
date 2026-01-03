@@ -8,6 +8,11 @@ import (
 )
 
 func SaveGameResult(player1, player2 string, winner int) error {
+	if Client == nil {
+		// MongoDB not connected, silently skip saving
+		return nil
+	}
+
 	collection := Client.Database("connect4").Collection("games")
 
 	// Only save if there's a winner (not a draw or forfeit)

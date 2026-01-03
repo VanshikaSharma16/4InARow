@@ -12,9 +12,20 @@ type LeaderboardEntry struct {
 }
 
 func GetLeaderboard() ([]LeaderboardEntry, error) {
+	if Client == nil {
+		// MongoDB not connected, return empty leaderboard
+		return []LeaderboardEntry{}, nil
+	}
+
 	collection := Client.Database("connect4").Collection("games")
 
 	pipeline := []bson.M{
+		// Filter out draws (winner == 0)
+		{
+			"$match": bson.M{
+				"winner": bson.M{"$ne": 0},
+			},
+		},
 		{
 			"$project": bson.M{
 				"winnerPlayer": bson.M{

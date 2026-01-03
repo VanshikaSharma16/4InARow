@@ -1,24 +1,61 @@
 import { useEffect, useState } from "react";
 
-function Leaderboard() {
+function Leaderboard({ refreshTrigger = 0 }) {
   const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchLeaderboard = () => {
+    setLoading(true);
+    setError(null);
+    fetch("http://localhost:8080/leaderboard")
+      .then(res => {
+        if (!res.ok) {
+          throw new Error("Failed to fetch leaderboard");
+        }
+        return res.json();
+      })
+      .then(setData)
+      .catch(err => {
+        console.error("Leaderboard fetch error:", err);
+        setError("Unable to load leaderboard. Make sure the backend server is running.");
+        setData([]);
+      })
+      .finally(() => setLoading(false));
+  };
 
   useEffect(() => {
-    fetch("http://localhost:8080/leaderboard")
-      .then(res => res.json())
-      .then(setData);
-  }, []);
+    fetchLeaderboard();
+  }, []); // Initial load
+
+  // Refresh when refreshTrigger changes (game ends)
+  useEffect(() => {
+    if (refreshTrigger > 0) {
+      // Small delay to ensure backend has saved the game result
+      const timer = setTimeout(() => {
+        fetchLeaderboard();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [refreshTrigger]);
 
   return (
     <div>
       <h2>Leaderboard</h2>
-      <ul>
-        {data.map((item, index) => (
-          <li key={index}>
-            {item.player} — {item.wins} wins
-          </li>
-        ))}
-      </ul>
+      {loading && <p>Loading...</p>}
+      {error && <p style={{ color: "#999", fontStyle: "italic" }}>{error}</p>}
+      {!loading && !error && data.length === 0 && (
+        <p style={{ color: "#999", fontStyle: "italic" }}>No games played yet.</p>
+      )}
+      {!loading && !error && data.length > 0 && (
+        <ul>
+          {data.map((item, index) => (
+            <li key={index}>
+              {item.player} — {item.wins} wins
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
