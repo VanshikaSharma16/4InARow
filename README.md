@@ -2,6 +2,14 @@
 
 A real-time multiplayer Connect Four game built with Go backend and React frontend, featuring competitive bot AI, matchmaking, reconnection support, and leaderboard tracking.
 
+## 🔗 Live Demo (Production)
+
+- **Frontend (Vercel):**  
+  https://4inarow-frontend.vercel.app
+
+- **Backend (Render):**  
+  https://connect4-backend-a4kq.onrender.com
+
 ## 🎮 Features
 
 - **Real-time Multiplayer**: Play against other players or a competitive bot
