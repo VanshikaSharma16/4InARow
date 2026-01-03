@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 
 	"connect4/db"
 	"connect4/websocket"
@@ -15,8 +16,14 @@ func main() {
 	http.HandleFunc("/ws", websocket.HandleWS)
 	http.HandleFunc("/leaderboard", withCORS(leaderboardHandler))
 
-	log.Println("Server started on :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	// ✅ Render / Cloud compatible port handling
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080" // local fallback
+	}
+
+	log.Println("Server started on :" + port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 
 func leaderboardHandler(w http.ResponseWriter, r *http.Request) {
