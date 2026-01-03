@@ -249,7 +249,4 @@ This project is created as a backend engineering intern assignment.
 **Enjoy playing 4 in a Row! 🎮**
 
 # connect4
-# connect4
-# connect4
-# 4InARow
 # 4InARow
