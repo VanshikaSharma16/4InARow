@@ -236,9 +236,20 @@ The competitive bot uses a multi-priority strategy:
 - [ ] Spectator mode
 - [ ] Mobile responsive design improvements
 
+## 🚀 Deployment
+
+For detailed deployment instructions, see [DEPLOYMENT.md](./DEPLOYMENT.md)
+
+**Quick Deploy Options:**
+- **Frontend:** Vercel, Netlify, or GitHub Pages
+- **Backend:** Railway, Render, or Fly.io
+- **Database:** MongoDB Atlas (already cloud-hosted)
+
 ## 📝 License
 
 This project is created as a backend engineering intern assignment.
+
+**Developed by Vanshika Sharma**
 
 ## 👨‍💻 Development Notes
 

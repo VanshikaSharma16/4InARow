@@ -358,6 +358,17 @@ function App() {
 
       <hr />
       <Leaderboard refreshTrigger={leaderboardRefresh} />
+      
+      <footer style={{ 
+        marginTop: 40, 
+        padding: 20, 
+        textAlign: "center", 
+        color: "#666", 
+        fontSize: 14,
+        borderTop: "1px solid #eee"
+      }}>
+        <p>Developed by <strong>Vanshika Sharma</strong></p>
+      </footer>
     </div>
   );
 }
